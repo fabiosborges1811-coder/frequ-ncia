@@ -207,6 +207,7 @@
   .scope-row .seg{flex:1; min-width:260px;}
   .len-row{display:flex; gap:6px; align-items:center; margin-bottom:14px; font-size:12px; color:var(--muted); flex-wrap:wrap;}
   .len-row .seg{flex:1; min-width:200px;}
+  .timer-choose{margin-bottom:14px;padding:12px;background:var(--surface-2);border:1px solid var(--line);border-radius:10px}.timer-choose-label{font-size:11px;color:var(--muted);margin-bottom:8px}.timer-choose small{display:block;font-size:9px;opacity:.75}.game-timer{display:none;position:sticky;top:58px;z-index:15;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin-bottom:12px;align-items:center;gap:10px}.game-timer.on{display:flex}.game-timer.urgent{border-color:var(--danger)}.game-timer span{font-size:10px;color:var(--muted)}.game-timer strong{font-size:15px;color:var(--amber);min-width:48px}.game-timer.urgent strong{color:var(--danger)}.game-timer-track{height:5px;background:var(--line);border-radius:3px;overflow:hidden;flex:1}#gameTimerFill{height:100%;width:100%;background:linear-gradient(90deg,var(--green),var(--amber));transition:width 1s linear}.game-timer.urgent #gameTimerFill{background:var(--danger)}
   .game-menu{display:flex; gap:10px; flex-wrap:wrap;}
   .game-btn{background:var(--surface-2); border:1px solid var(--line); color:var(--text); position:relative;
     font-family:'IBM Plex Mono',monospace; font-size:12px; padding:14px 16px; border-radius:10px; cursor:pointer; flex:1; min-width:150px; text-align:left;
@@ -685,6 +686,7 @@
     <h2>Jogos</h2>
     <div class="sub">Gerados a partir das suas próprias capturas — escolha o conjunto e jogue, inclusive com todas.</div>
     <div class="why"><b>Recuperar de jeitos diferentes:</b> reencontrar a mesma palavra no quiz, na forca e na memória cria vários caminhos até ela.</div>
+    <div id="gameTimer" class="game-timer"><span id="gameTimerLabel">Tempo</span><strong id="gameTimerClock">03:00</strong><div class="game-timer-track"><div id="gameTimerFill"></div></div></div>
     <div id="gameArea"></div>
   </div>
 
@@ -758,7 +760,7 @@ const STORAGE_KEY = 'frequencia:state';
 const INTERVALS = [1,2,4,7,14,30];
 let state = defaultState();
 let UI = {
-  gameActive:false, sprintActive:false, sprint:null, reviewIndex:0,
+  gameActive:false, sprintActive:false, sprint:null, reviewIndex:0, timerLevel:'medium',
   addType:'word', gameScope:'all', quizLen:'10', challengeRun:false, profileRequired:false,
   calY:null, calM:null, calInit:false,
   search:'', boxF:'', typeF:'', discQ:'', discLv:'all', discAll:false, lastSpoken:''
@@ -1074,6 +1076,7 @@ function showLevelUp(after,reason,fresh){
   confetti(); fanfare();
 }
 function awardGameXP(base,label){
+  stopGameTimer();
   const ch=UI.challengeRun; UI.challengeRun=false;
   const pts=(ch&&base>=15)?25:base;
   if(ch) confetti();
@@ -1894,6 +1897,15 @@ document.getElementById('importFile').addEventListener('change',e=>{
 });
 function showBackupMsg(msg){ const el=document.getElementById('backupMsg'); el.textContent=msg; el.style.display='block'; setTimeout(()=>el.style.display='none',4000); }
 
+const GAME_TIMES={easy:300,medium:180,hard:60};
+let gameTimerCtl={id:null,left:0,total:0,label:''};
+function timerName(){return UI.timerLevel==='easy'?'Fácil':UI.timerLevel==='hard'?'Difícil':'Médio'}
+function fmtTime(x){return pad(Math.floor(Math.max(0,x)/60))+':'+pad(Math.max(0,x)%60)}
+function paintGameTimer(){const b=document.getElementById('gameTimer');if(!b)return;document.getElementById('gameTimerLabel').textContent=gameTimerCtl.label+' · '+timerName();document.getElementById('gameTimerClock').textContent=fmtTime(gameTimerCtl.left);document.getElementById('gameTimerFill').style.width=(gameTimerCtl.left/gameTimerCtl.total*100)+'%';b.classList.toggle('urgent',gameTimerCtl.left<=15)}
+function stopGameTimer(hide=true){if(gameTimerCtl.id)clearInterval(gameTimerCtl.id);gameTimerCtl.id=null;const b=document.getElementById('gameTimer');if(b&&hide)b.classList.remove('on','urgent')}
+function startGameTimer(label){stopGameTimer(false);gameTimerCtl.total=GAME_TIMES[UI.timerLevel]||180;gameTimerCtl.left=gameTimerCtl.total;gameTimerCtl.label=label;document.getElementById('gameTimer').classList.add('on');paintGameTimer();gameTimerCtl.id=setInterval(()=>{gameTimerCtl.left--;paintGameTimer();if(gameTimerCtl.left<=0){stopGameTimer(false);timeUpGame()}},1000)}
+function timeUpGame(){blip(false);const a=document.getElementById('gameArea');a.querySelectorAll('button,input').forEach(x=>x.disabled=true);a.insertAdjacentHTML('afterbegin','<div class="cw-feedback show" style="display:block;border-color:var(--danger);color:var(--danger);margin-bottom:14px">Tempo esgotado.<div style="margin-top:8px"><button class="mini-btn" id="timeUpBack">Voltar aos jogos</button></div></div>');document.getElementById('timeUpBack').disabled=false;document.getElementById('timeUpBack').onclick=backToMenu}
+
 /* ==================== JOGOS ==================== */
 function poolForScope(){
   if(UI.gameScope==='words') return state.cards.filter(c=>c.type==='word');
@@ -1923,6 +1935,7 @@ function renderGameMenu(){
   const quizReady=pool.length>=4, memReady=pool.length>=3;
   const quizN = UI.quizLen==='all' ? pool.length : Math.min(parseInt(UI.quizLen,10),pool.length);
   gameArea.innerHTML=
+    '<div class="timer-choose"><div class="timer-choose-label">ESCOLHA O TEMPO</div><div class="seg" id="timerSeg"><button data-time="easy" class="'+(UI.timerLevel==='easy'?'on':'')+'">Fácil<small>5 min</small></button><button data-time="medium" class="'+(UI.timerLevel==='medium'?'on':'')+'">Médio<small>3 min</small></button><button data-time="hard" class="'+(UI.timerLevel==='hard'?'on':'')+'">Difícil<small>1 min</small></button></div></div>'+
     '<div class="scope-row"><div class="seg" id="scopeSeg">'+
     '<button data-scope="all" class="'+(UI.gameScope==='all'?'on':'')+'">Todas</button>'+
     '<button data-scope="words" class="'+(UI.gameScope==='words'?'on':'')+'">Palavras</button>'+
@@ -1940,6 +1953,7 @@ function renderGameMenu(){
     '<div class="lock-msg">Conjunto: <b style="color:var(--text);">'+esc(scopeLabel())+'</b> — '+pool.length+' captura(s), '+gw.length+' válida(s) pra grade (palavra única).'+
     (pool.length<3?' Capture mais pra desbloquear jogos.':'')+
     (UI.gameScope==='phrases'?' Expressões jogam no quiz e na memória — caça-palavras, forca e cruzadinha precisam de palavra única.':'')+'</div>';
+  gameArea.querySelectorAll('#timerSeg button').forEach(b=>b.addEventListener('click',()=>{UI.timerLevel=b.dataset.time;renderGameMenu()}));
   gameArea.querySelectorAll('#scopeSeg button').forEach(b=>b.addEventListener('click',()=>{ UI.gameScope=b.dataset.scope; renderGameMenu(); }));
   gameArea.querySelectorAll('#lenSeg button').forEach(b=>b.addEventListener('click',()=>{ UI.quizLen=b.dataset.len; renderGameMenu(); }));
   if(wsReady) document.getElementById('btnWS').addEventListener('click',()=>renderWordSearch(pool));
@@ -1948,7 +1962,7 @@ function renderGameMenu(){
   if(quizReady) document.getElementById('btnQuiz').addEventListener('click',()=>startQuiz(pool,UI.quizLen,'Quiz · '+scopeLabel()));
   if(memReady) document.getElementById('btnMem').addEventListener('click',()=>startMemory(pool));
 }
-function backToMenu(){ UI.gameActive=false; UI.challengeRun=false; wsCtl.finish=null; renderGameMenu(); }
+function backToMenu(){ stopGameTimer(); UI.gameActive=false; UI.challengeRun=false; wsCtl.finish=null; renderGameMenu(); }
 function startGameById(id,pool,isCh){
   UI.challengeRun=!!isCh;
   if(id==='ws') renderWordSearch(pool);
@@ -1977,7 +1991,7 @@ function startQuiz(pool,len,label){
     return {card:card,dir:dir,options:shuffle(opts),correct:dir==='en-pt'?card.translation:card.word,answered:false,pick:null};
   }).filter(Boolean);
   if(!questions.length){ showToast('Sem perguntas possíveis com esse conjunto.'); return; }
-  UI.gameActive=true;
+  UI.gameActive=true; startGameTimer('Quiz');
   let i=0,score=0,qDone=false,quizPts=15;
   function renderQ(){
     const gameArea=document.getElementById('gameArea');
@@ -2029,7 +2043,7 @@ function startMemory(pool){
   let deck=[];
   pairs.forEach((c,idx)=>{ deck.push({pair:idx,text:c.word}); deck.push({pair:idx,text:c.translation}); });
   deck=shuffle(deck);
-  UI.gameActive=true;
+  UI.gameActive=true; startGameTimer('Memória');
   const flipped=[], matched=new Set();
   let moves=0, lock=false, misses=0, mDone=false;
   function renderM(){
@@ -2088,7 +2102,7 @@ function generateWordSearch(words){
   return {grid:grid,size:size,placed:placed};
 }
 function renderWordSearch(pool){
-  UI.gameActive=true;
+  UI.gameActive=true; startGameTimer('Caça-palavras');
   const gameArea=document.getElementById('gameArea');
   const data=generateWordSearch(getGameWords(pool));
   const found=new Set();
@@ -2166,7 +2180,7 @@ function hangmanFigure(wrong,lost){
 }
 function startHangman(pool){
   const words=getGameWords(pool); if(!words.length) return;
-  UI.gameActive=true;
+  UI.gameActive=true; startGameTimer('Forca');
   const picked=words[Math.floor(Math.random()*words.length)];
   const word=picked.word, guessed=new Set();
   let wrong=0; const maxWrong=6;
@@ -2201,11 +2215,12 @@ function startHangman(pool){
 }
 
 /* ---- CRUZADINHA ---- */
+function getCrosswordEntries(pool){const seen=new Set(),out=[];(pool||state.cards).forEach(c=>{const original=(c.word||'').trim();if(!original)return;const grid=original.normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^A-Za-z]/g,'').toUpperCase();const key=grid.toLowerCase();if(grid.length<3||grid.length>18||seen.has(key))return;seen.add(key);out.push({word:grid,display:original,clue:c.translation||'',words:original.split(/\s+/).filter(Boolean).length})});return out}
 function generateCrossword(words){
   const list=shuffle(words).filter(w=>w.word.length>=3&&w.word.length<=10).slice(0,10).sort((a,b)=>b.word.length-a.word.length);
   if(!list.length) return null;
   const first=list[0];
-  const placements=[{word:first.word,clue:first.clue,row:0,col:0,dir:'H'}];
+  const placements=[{word:first.word,display:first.display,words:first.words,clue:first.clue,row:0,col:0,dir:'H'}];
   const cells={};
   for(let k=0;k<first.word.length;k++) cells['0,'+k]=first.word[k];
   for(let idx=1;idx<list.length;idx++){
@@ -2223,7 +2238,7 @@ function generateCrossword(words){
         }
         if(fits){
           for(let k=0;k<w.word.length;k++){ const r=dir==='V'?row+k:row, c=dir==='V'?col:col+k; cells[r+','+c]=w.word[k]; }
-          placements.push({word:w.word,clue:w.clue,row:row,col:col,dir:dir}); placedOk=true;
+          placements.push({word:w.word,display:w.display,words:w.words,clue:w.clue,row:row,col:col,dir:dir}); placedOk=true;
         }
       }
     }
@@ -2231,9 +2246,9 @@ function generateCrossword(words){
   return {placements:placements};
 }
 function renderCrossword(pool){
-  UI.gameActive=true;
+  UI.gameActive=true; startGameTimer('Cruzadinha');
   const gameArea=document.getElementById('gameArea');
-  const data=generateCrossword(getGameWords(pool));
+  const data=generateCrossword(getCrosswordEntries(pool));
   if(!data||data.placements.length<2){
     gameArea.innerHTML='<div class="game-header"><button class="back-link" id="cwBack">← voltar</button><span style="font-size:12px;color:var(--muted);">Cruzadinha</span></div><div class="empty">Não encontrei cruzamentos suficientes neste conjunto. Tente adicionar palavras que compartilhem letras.</div>';
     document.getElementById('cwBack').addEventListener('click',backToMenu); return;
@@ -2258,7 +2273,7 @@ function renderCrossword(pool){
     if(active[key]!==undefined){div.classList.add('active');div.dataset.key=key;div.dataset.answer=active[key];const starters=data.placements.filter(p=>p.row===r&&p.col===c);if(starters.length){const nn=document.createElement('div');nn.className='cw-num';nn.textContent=starters.map(p=>p.number).join('/');div.appendChild(nn);}const input=document.createElement('input');input.maxLength=1;input.autocomplete='off';input.setAttribute('aria-label','célula '+(r+1)+', '+(c+1));div.appendChild(input);inputs[key]=input;cells[key]=div;}
     gridEl.appendChild(div);
   }
-  function clueHtml(p){return '<button class="cw-clue-item" data-pi="'+p.pi+'"><span class="cw-clue-n">'+p.number+'.</span><span>'+esc(p.clue||'Sem pista')+' <small>· '+p.word.length+' letras</small></span></button>';}
+  function clueHtml(p){const shape=(p.display||p.word).split(/\s+/).map(x=>x.replace(/[^A-Za-zÀ-ÿ]/g,'').length).filter(Boolean).join(' + ');return '<button class="cw-clue-item" data-pi="'+p.pi+'"><span class="cw-clue-n">'+p.number+'.</span><span>'+esc(p.clue||'Sem pista')+' <small>· '+shape+' letras'+(p.words>1?' · expressão':'')+'</small></span></button>';}
   document.getElementById('cwAcross').innerHTML=data.placements.filter(p=>p.dir==='H').sort((a,b)=>a.number-b.number).map(clueHtml).join('')||'<div class="empty">—</div>';
   document.getElementById('cwDown').innerHTML=data.placements.filter(p=>p.dir==='V').sort((a,b)=>a.number-b.number).map(clueHtml).join('')||'<div class="empty">—</div>';
   function keysFor(p){return [...Array(p.word.length)].map((_,k)=>(p.dir==='V'?p.row+k:p.row)+','+(p.dir==='H'?p.col+k:p.col));}
@@ -2354,5 +2369,5 @@ document.addEventListener('keydown',e=>{
 
 loadState();
 </script>
-<script>(function(){function c(){var b=a.contentDocument||(a.contentWindow&&a.contentWindow.document);if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a38090510f29cd97',t:'MTc4ODg5Nzg4MQ=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+</body>
 </html>
