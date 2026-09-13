@@ -1904,7 +1904,7 @@ function fmtTime(x){return pad(Math.floor(Math.max(0,x)/60))+':'+pad(Math.max(0,
 function paintGameTimer(){const b=document.getElementById('gameTimer');if(!b)return;document.getElementById('gameTimerLabel').textContent=gameTimerCtl.label+' · '+timerName();document.getElementById('gameTimerClock').textContent=fmtTime(gameTimerCtl.left);document.getElementById('gameTimerFill').style.width=(gameTimerCtl.left/gameTimerCtl.total*100)+'%';b.classList.toggle('urgent',gameTimerCtl.left<=15)}
 function stopGameTimer(hide=true){if(gameTimerCtl.id)clearInterval(gameTimerCtl.id);gameTimerCtl.id=null;const b=document.getElementById('gameTimer');if(b&&hide)b.classList.remove('on','urgent')}
 function startGameTimer(label){stopGameTimer(false);gameTimerCtl.total=GAME_TIMES[UI.timerLevel]||180;gameTimerCtl.left=gameTimerCtl.total;gameTimerCtl.label=label;document.getElementById('gameTimer').classList.add('on');paintGameTimer();gameTimerCtl.id=setInterval(()=>{gameTimerCtl.left--;paintGameTimer();if(gameTimerCtl.left<=0){stopGameTimer(false);timeUpGame()}},1000)}
-function timeUpGame(){blip(false);const a=document.getElementById('gameArea');a.querySelectorAll('button,input').forEach(x=>x.disabled=true);a.insertAdjacentHTML('afterbegin','<div class="cw-feedback show" style="display:block;border-color:var(--danger);color:var(--danger);margin-bottom:14px">Tempo esgotado.<div style="margin-top:8px"><button class="mini-btn" id="timeUpBack">Voltar aos jogos</button></div></div>');document.getElementById('timeUpBack').disabled=false;document.getElementById('timeUpBack').onclick=backToMenu}
+function timeUpGame(){blip(false);if(typeof hangmanKeyHandler!=='undefined'&&hangmanKeyHandler)document.removeEventListener('keydown',hangmanKeyHandler);const a=document.getElementById('gameArea');a.querySelectorAll('button,input').forEach(x=>x.disabled=true);a.insertAdjacentHTML('afterbegin','<div class="cw-feedback show" style="display:block;border-color:var(--danger);color:var(--danger);margin-bottom:14px">Tempo esgotado.<div style="margin-top:8px"><button class="mini-btn" id="timeUpBack">Voltar aos jogos</button></div></div>');document.getElementById('timeUpBack').disabled=false;document.getElementById('timeUpBack').onclick=backToMenu}
 
 /* ==================== JOGOS ==================== */
 function poolForScope(){
@@ -1931,7 +1931,7 @@ function renderGameMenu(){
   const gameArea=document.getElementById('gameArea'); if(!gameArea) return;
   const pool=poolForScope();
   const gw=getGameWords(pool);
-  const wsReady=gw.length>=5, hgReady=gw.length>=1, cwReady=gw.length>=5;
+  const wsReady=gw.length>=5, hgReady=getHangmanEntries(pool).length>=1, cwReady=gw.length>=5;
   const quizReady=pool.length>=4, memReady=pool.length>=3;
   const quizN = UI.quizLen==='all' ? pool.length : Math.min(parseInt(UI.quizLen,10),pool.length);
   gameArea.innerHTML=
@@ -1946,13 +1946,13 @@ function renderGameMenu(){
     '<button data-len="all" class="'+(UI.quizLen==='all'?'on':'')+'">Todas ('+pool.length+')</button></div></div>'+
     '<div class="game-menu">'+
     '<button class="game-btn" id="btnWS" '+(wsReady?'':'disabled')+'><span class="gname">Caça-palavras</span>Ache suas capturas na grade.</button>'+
-    '<button class="game-btn" id="btnHG" '+(hgReady?'':'disabled')+'><span class="gname">Forca</span>Adivinhe letra por letra, com dica.</button>'+
+    '<button class="game-btn" id="btnHG" '+(hgReady?'':'disabled')+'><span class="gname">Forca</span>Palavras e expressões, com teclado e dica.</button>'+
     '<button class="game-btn" id="btnCW" '+(cwReady?'':'disabled')+'><span class="gname">Cruzadinha</span>Palavras que se cruzam.</button>'+
     '<button class="game-btn" id="btnQuiz" '+(quizReady?'':'disabled')+'><span class="gname">Quiz</span>Múltipla escolha, '+quizN+' pergunta(s).</button>'+
     '<button class="game-btn" id="btnMem" '+(memReady?'':'disabled')+'><span class="gname">Memória</span>Pares palavra / tradução.</button></div>'+
     '<div class="lock-msg">Conjunto: <b style="color:var(--text);">'+esc(scopeLabel())+'</b> — '+pool.length+' captura(s), '+gw.length+' válida(s) pra grade (palavra única).'+
     (pool.length<3?' Capture mais pra desbloquear jogos.':'')+
-    (UI.gameScope==='phrases'?' Expressões jogam no quiz e na memória — caça-palavras, forca e cruzadinha precisam de palavra única.':'')+'</div>';
+    (UI.gameScope==='phrases'?' Expressões jogam na forca, no quiz e na memória — caça-palavras e cruzadinha usam palavras únicas.':'')+'</div>';
   gameArea.querySelectorAll('#timerSeg button').forEach(b=>b.addEventListener('click',()=>{UI.timerLevel=b.dataset.time;renderGameMenu()}));
   gameArea.querySelectorAll('#scopeSeg button').forEach(b=>b.addEventListener('click',()=>{ UI.gameScope=b.dataset.scope; renderGameMenu(); }));
   gameArea.querySelectorAll('#lenSeg button').forEach(b=>b.addEventListener('click',()=>{ UI.quizLen=b.dataset.len; renderGameMenu(); }));
@@ -2178,39 +2178,70 @@ function hangmanFigure(wrong,lost){
     P('<line x1="105" y1="95" x2="120" y2="120" stroke="var(--text)" stroke-width="4" stroke-linecap="round"/>',wrong>=6)+
     '</svg>';
 }
+let hangmanSeen=new Set(),hangmanKeyHandler=null;
+function getHangmanEntries(pool){
+  const seen=new Set(),out=[];
+  (pool||state.cards).forEach(c=>{
+    const original=(c.word||'').trim(); if(!original)return;
+    const normalized=original.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase();
+    const answer=normalized.replace(/[^A-Z ]/g,'').replace(/\s+/g,' ').trim();
+    const key=answer.replace(/\s/g,'');
+    if(key.length<2||key.length>35||seen.has(key))return;
+    seen.add(key);out.push({word:answer,display:original,clue:c.translation||'',isPhrase:/\s/.test(answer)});
+  });
+  return out;
+}
 function startHangman(pool){
-  const words=getGameWords(pool); if(!words.length) return;
-  UI.gameActive=true; startGameTimer('Forca');
-  const picked=words[Math.floor(Math.random()*words.length)];
-  const word=picked.word, guessed=new Set();
-  let wrong=0; const maxWrong=6;
-  let hgDone=false;
+  const all=getHangmanEntries(pool); if(!all.length)return;
+  let available=all.filter(x=>!hangmanSeen.has(x.word));
+  if(!available.length){hangmanSeen.clear();available=all;showToast('Todas foram usadas — iniciando uma nova rodada sem repetições.');}
+  const picked=available[Math.floor(Math.random()*available.length)];hangmanSeen.add(picked.word);
+  UI.gameActive=true;if(!gameTimerCtl.id)startGameTimer('Forca');
+  const word=picked.word,letters=word.replace(/\s/g,''),guessed=new Set();
+  let wrong=0;const maxWrong=6;let hgDone=false;
+  if(hangmanKeyHandler)document.removeEventListener('keydown',hangmanKeyHandler);
+  function guess(letter){
+    letter=(letter||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase();
+    if(!/^[A-Z]$/.test(letter)||guessed.has(letter)||wrong>=maxWrong||letters.split('').every(l=>guessed.has(l)))return;
+    guessed.add(letter);if(letters.indexOf(letter)===-1)wrong++;renderHg();
+  }
   function renderHg(){
     const gameArea=document.getElementById('gameArea');
-    const tiles=word.split('').map(l=>guessed.has(l)?'<div class="hg-tile hit">'+l+'</div>':'<div class="hg-tile">·</div>').join('');
-    const won=word.split('').every(l=>guessed.has(l)), lost=wrong>=maxWrong;
-    gameArea.innerHTML='<div class="game-header"><button class="back-link" id="hgBack">← voltar</button><span style="font-size:12px;color:var(--muted);">Forca</span></div>'+
-      '<div class="hg-wrap"><div class="hg-stage">'+hangmanFigure(wrong,lost)+'</div><div class="hg-tiles">'+tiles+'</div>'+
-      '<div class="hg-tries">'+(maxWrong-wrong)+' tentativa(s) restante(s)</div>'+
-      '<div class="hg-clue">dica: '+esc(picked.clue||'sem dica salva')+'</div><div class="hg-keyboard" id="hgKeys"></div>'+
-      (won?'<div class="hg-msg win">Você me salvou! A palavra era "'+word+'".</div>':'')+
-      (lost?'<div class="hg-msg lose">Ops... me enforquei. Era "'+word+'". Valeu a tentativa.</div>':'')+
-      ((won||lost)?'<button class="game-btn" id="hgAgain">Jogar de novo</button>':'')+'</div>';
-    document.getElementById('hgBack').addEventListener('click',backToMenu);
+    const won=letters.split('').every(l=>guessed.has(l)),lost=wrong>=maxWrong;
+    const tiles=word.split('').map(l=>l===' '?'<div class="hg-tile" style="visibility:hidden;width:12px;min-width:12px;border:0;"> </div>':guessed.has(l)?'<div class="hg-tile hit">'+l+'</div>':'<div class="hg-tile">·</div>').join('');
+    const remaining=all.length-hangmanSeen.size;
+    gameArea.innerHTML='<div class="game-header"><button class="back-link" id="hgBack">← voltar</button><span style="font-size:12px;color:var(--muted);">Forca · '+(picked.isPhrase?'expressão':'palavra')+' · '+remaining+' sem repetir</span></div>'+ 
+      '<div class="hg-wrap"><div class="hg-stage">'+hangmanFigure(wrong,lost)+'</div><div class="hg-tiles">'+tiles+'</div>'+ 
+      '<div class="hg-tries">'+(maxWrong-wrong)+' tentativa(s) · '+letters.length+' letras'+(picked.isPhrase?' · '+word.split(' ').length+' palavras':'')+'</div>'+ 
+      '<div class="hg-clue">dica: '+esc(picked.clue||'sem dica salva')+'</div><div class="hg-keyboard" id="hgKeys"></div>'+ 
+      (won?'<div class="hg-msg win">Você conseguiu! Era “'+esc(picked.display)+'”.</div>':'')+ 
+      (lost?'<div class="hg-msg lose">O tempo da tentativa acabou. Era “'+esc(picked.display)+'”.</div>':'')+ 
+      ((won||lost)?'<button class="game-btn" id="hgAgain">Próxima →</button>':'')+'</div>';
+    document.getElementById('hgBack').addEventListener('click',()=>{if(hangmanKeyHandler)document.removeEventListener('keydown',hangmanKeyHandler);backToMenu();});
     if(won||lost){
       blip(won);
-      if(!hgDone){ hgDone=true; const pts=awardGameXP(won?15:5,'Forca'); if(won){ confetti(); if(wrong===0) awardBadge('forca-clean'); }
-        const msg=gameArea.querySelector('.hg-msg'); if(msg) msg.textContent+=' +'+pts+' XP'; }
-      document.getElementById('hgAgain').addEventListener('click',()=>startHangman(pool)); return;
+      if(!hgDone){
+        hgDone=true;
+        if(won&&wrong===0)awardBadge('forca-clean');
+        if(hangmanSeen.size>=all.length){
+          const pts=awardGameXP(25,'Rodada completa da Forca');
+          const msg=gameArea.querySelector('.hg-msg');if(msg)msg.textContent+=' Rodada completa! +'+pts+' XP';
+        } else if(won){
+          const msg=gameArea.querySelector('.hg-msg');if(msg)msg.textContent+=' Continue — o tempo ainda está correndo.';
+        }
+      }
+      document.getElementById('hgAgain').addEventListener('click',()=>startHangman(pool));return;
     }
     const keysEl=document.getElementById('hgKeys');
-    'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').forEach(letter=>{
-      const btn=document.createElement('button'); btn.className='hg-key'; btn.textContent=letter;
-      if(guessed.has(letter)){ btn.disabled=true; btn.classList.add(word.indexOf(letter)!==-1?'correct':'wrong'); }
-      btn.addEventListener('click',()=>{ guessed.add(letter); if(word.indexOf(letter)===-1) wrong++; renderHg(); });
-      keysEl.appendChild(btn);
-    });
+    'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').forEach(letter=>{const btn=document.createElement('button');btn.className='hg-key';btn.textContent=letter;if(guessed.has(letter)){btn.disabled=true;btn.classList.add(letters.indexOf(letter)!==-1?'correct':'wrong');}btn.addEventListener('click',()=>guess(letter));keysEl.appendChild(btn);});
   }
+  hangmanKeyHandler=e=>{
+    if(!UI.gameActive||modalOpen()||palOpen())return;
+    const tag=(document.activeElement&&document.activeElement.tagName)||'';
+    if(tag==='INPUT'||tag==='TEXTAREA'||tag==='SELECT')return;
+    if(/^[a-zA-Z]$/.test(e.key)){e.preventDefault();guess(e.key);}
+  };
+  document.addEventListener('keydown',hangmanKeyHandler);
   renderHg();
 }
 
@@ -2248,7 +2279,7 @@ function generateCrossword(words){
 function renderCrossword(pool){
   UI.gameActive=true; startGameTimer('Cruzadinha');
   const gameArea=document.getElementById('gameArea');
-  const data=generateCrossword(getCrosswordEntries(pool));
+  const data=generateCrossword(getGameWords(pool));
   if(!data||data.placements.length<2){
     gameArea.innerHTML='<div class="game-header"><button class="back-link" id="cwBack">← voltar</button><span style="font-size:12px;color:var(--muted);">Cruzadinha</span></div><div class="empty">Não encontrei cruzamentos suficientes neste conjunto. Tente adicionar palavras que compartilhem letras.</div>';
     document.getElementById('cwBack').addEventListener('click',backToMenu); return;
@@ -2369,5 +2400,5 @@ document.addEventListener('keydown',e=>{
 
 loadState();
 </script>
-</body>
+<script>(function(){function c(){var b=a.contentDocument||(a.contentWindow&&a.contentWindow.document);if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a3a887ee0b19a163',t:'MTc4OTMxNjk2OA=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
 </html>
