@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -2038,7 +2039,7 @@ function timerName(){return UI.timerLevel==='custom'?'Personalizado':'Sem limite
 function fmtTime(x){return pad(Math.floor(Math.max(0,x)/60))+':'+pad(Math.max(0,x)%60)}
 function paintGameTimer(){const lives='♥'.repeat(Math.max(0,UI.gameLives||0))+'♡'.repeat(Math.max(0,3-(UI.gameLives||0))),b=document.getElementById('gameTimer');if(!b)return;document.getElementById('gameTimerLabel').innerHTML=gameTimerCtl.label+' · '+timerName()+' <span class="life-row">'+lives+'</span>';document.getElementById('gameTimerClock').textContent=fmtTime(gameTimerCtl.limited?gameTimerCtl.left:gameTimerCtl.elapsed);const fill=document.getElementById('gameTimerFill');fill.style.width=gameTimerCtl.limited?(gameTimerCtl.left/gameTimerCtl.total*100)+'%':'100%';fill.style.opacity=gameTimerCtl.limited?'1':'.35';b.classList.toggle('urgent',gameTimerCtl.limited&&gameTimerCtl.left<=15)}
 function stopGameTimer(hide=true){if(gameTimerCtl.id)clearInterval(gameTimerCtl.id);gameTimerCtl.id=null;const b=document.getElementById('gameTimer');if(b&&hide)b.classList.remove('on','urgent')}
-function startGameTimer(label){stopGameTimer(false);UI.gameLives=3;gameTimerCtl.limited=UI.timerLevel==='custom';gameTimerCtl.total=gameTimerCtl.limited?Math.max(60,(UI.customMinutes||5)*60):0;gameTimerCtl.left=gameTimerCtl.total;gameTimerCtl.elapsed=0;gameTimerCtl.started=Date.now();gameTimerCtl.label=label;document.getElementById('gameTimer').classList.add('on');paintGameTimer();gameTimerCtl.id=setInterval(()=>{gameTimerCtl.elapsed++;if(gameTimerCtl.limited){gameTimerCtl.left--;if(gameTimerCtl.left<=0){paintGameTimer();stopGameTimer(false);timeUpGame();return}}paintGameTimer()},1000)}
+function startGameTimer(label){if(gameTimerCtl.id&&gameTimerCtl.label===label){paintGameTimer();return;}stopGameTimer(false);UI.gameLives=3;gameTimerCtl.limited=UI.timerLevel==='custom';gameTimerCtl.total=gameTimerCtl.limited?Math.max(60,(UI.customMinutes||5)*60):0;gameTimerCtl.left=gameTimerCtl.total;gameTimerCtl.elapsed=0;gameTimerCtl.started=Date.now();gameTimerCtl.deadline=gameTimerCtl.limited?Date.now()+gameTimerCtl.total*1000:0;gameTimerCtl.label=label;document.getElementById('gameTimer').classList.add('on');paintGameTimer();gameTimerCtl.id=setInterval(()=>{gameTimerCtl.elapsed=Math.floor((Date.now()-gameTimerCtl.started)/1000);if(gameTimerCtl.limited){gameTimerCtl.left=Math.max(0,Math.ceil((gameTimerCtl.deadline-Date.now())/1000));if(gameTimerCtl.left<=0){paintGameTimer();stopGameTimer(false);timeUpGame();return}}paintGameTimer()},250)}
 function loseGameLife(){UI.gameLives=Math.max(0,(UI.gameLives||3)-1);paintGameTimer();if(UI.gameLives<=0){stopGameTimer(false);timeUpGame();return false}return true}
 
 function timeUpGame(){blip(false);if(typeof hangmanKeyHandler!=='undefined'&&hangmanKeyHandler)document.removeEventListener('keydown',hangmanKeyHandler);const a=document.getElementById('gameArea');a.querySelectorAll('button,input').forEach(x=>x.disabled=true);a.insertAdjacentHTML('afterbegin','<div class="cw-feedback show" style="display:block;border-color:var(--danger);color:var(--danger);margin-bottom:14px">Tempo esgotado.<div style="margin-top:8px"><button class="mini-btn" id="timeUpBack">Voltar aos jogos</button></div></div>');document.getElementById('timeUpBack').disabled=false;document.getElementById('timeUpBack').onclick=backToMenu}
@@ -2064,6 +2065,7 @@ function getGameWords(pool){
 function scopeLabel(){ return UI.gameScope==='all'?'todas as capturas':UI.gameScope==='words'?'palavras':'expressões'; }
 
 function renderGameRanking(){const rows=Object.entries(state.gameRecords||{}).sort((a,b)=>a[1].time-b[1].time);return '<div class="game-ranking"><div class="row-between"><div><div class="kicker">RANKING PESSOAL</div><b>Seus melhores tempos</b></div><span class="rank-note">mais rápido = mais XP</span></div>'+(rows.length?rows.slice(0,10).map((r,i)=>'<div class="rank-row"><span class="rank-pos">'+(i+1)+'</span><span>'+esc(r[0])+'</span><strong>'+fmtTime(r[1].time)+'</strong></div>').join(''):'<div class="empty">Conclua um jogo para registrar seu primeiro tempo.</div>')+'</div>'}
+function selectedGamePool(pool){const list=shuffle([...(pool||[])]);return UI.quizLen==='all'?list:list.slice(0,Math.min(parseInt(UI.quizLen,10)||10,list.length));}
 function renderGameMenu(){
   UI.challengeRun=false;
   const gameArea=document.getElementById('gameArea'); if(!gameArea) return;
@@ -2073,12 +2075,12 @@ function renderGameMenu(){
   const quizReady=pool.length>=4, memReady=pool.length>=3, sentenceReady=pool.filter(c=>c.type==='phrase'&&c.word.trim().split(/\s+/).length>=2).length>=1;
   const quizN = UI.quizLen==='all' ? pool.length : Math.min(parseInt(UI.quizLen,10),pool.length);
   gameArea.innerHTML=
-    '<div class="timer-choose"><div class="timer-choose-label">MODO DE TEMPO</div><div class="seg" id="timerSeg"><button data-time="off" class="'+(UI.timerLevel==='off'?'on':'')+'">Sem limite<small>mede para o ranking</small></button><button data-time="custom" class="'+(UI.timerLevel==='custom'?'on':'')+'">Personalizado<small>você escolhe</small></button></div><div class="custom-time-row" id="customTimeRow" style="display:'+(UI.timerLevel==='custom'?'flex':'none')+'"><label>minutos</label><input id="customMinutes" type="number" min="1" max="60" value="'+UI.customMinutes+'"><span>O jogo termina ao chegar a zero.</span></div></div>'+
+    '<div class="timer-choose"><div class="timer-choose-label">MODO DE TEMPO</div><div class="seg" id="timerSeg"><button data-time="off" class="'+(UI.timerLevel==='off'?'on':'')+'">Sem limite<small>mede para o ranking</small></button><button data-time="custom" class="'+(UI.timerLevel==='custom'?'on':'')+'">Personalizado<small>você escolhe</small></button></div><div class="custom-time-row" id="customTimeRow" style="display:'+(UI.timerLevel==='custom'?'flex':'none')+'"><label>minutos</label><input id="customMinutes" type="number" min="1" max="60" value="'+UI.customMinutes+'"><span>O jogo termina ao chegar a zero.</span></div><div style="font-size:10px;color:var(--muted);margin-top:7px">Esta quantidade vale para todos os jogos baseados nas suas capturas.</div></div>'+
     '<div class="scope-row"><div class="seg" id="scopeSeg">'+
     '<button data-scope="all" class="'+(UI.gameScope==='all'?'on':'')+'">Todas</button>'+
     '<button data-scope="words" class="'+(UI.gameScope==='words'?'on':'')+'">Palavras</button>'+
     '<button data-scope="phrases" class="'+(UI.gameScope==='phrases'?'on':'')+'">Expressões</button></div></div>'+
-    '<div class="len-row">quiz com: <div class="seg" id="lenSeg">'+
+    '<div class="len-row">itens por jogo: <div class="seg" id="lenSeg">'+
     '<button data-len="5" class="'+(UI.quizLen==='5'?'on':'')+'">5</button>'+
     '<button data-len="10" class="'+(UI.quizLen==='10'?'on':'')+'">10</button>'+
     '<button data-len="all" class="'+(UI.quizLen==='all'?'on':'')+'">Todas ('+pool.length+')</button></div></div>'+
@@ -2087,22 +2089,22 @@ function renderGameMenu(){
     '<button class="game-btn" id="btnWS" '+(wsReady?'':'disabled')+'><span class="game-art"><svg viewBox="0 0 80 66"><g fill="#273747" stroke="#69a9d1"><rect x="8" y="5" width="18" height="18" rx="4"/><rect x="31" y="5" width="18" height="18" rx="4"/><rect x="54" y="5" width="18" height="18" rx="4"/><rect x="8" y="28" width="18" height="18" rx="4"/><rect x="31" y="28" width="18" height="18" rx="4"/><rect x="54" y="28" width="18" height="18" rx="4"/></g><path d="M14 14 L63 38" stroke="#e8a33d" stroke-width="5" stroke-linecap="round"/></svg></span><span class="gname">Caça-palavras</span>Ache suas capturas na grade.</button>'+
     '<button class="game-btn" id="btnHG" '+(hgReady?'':'disabled')+'><span class="game-art"><svg viewBox="0 0 80 66"><path d="M14 59 H48 M22 59 V8 H58 V18" fill="none" stroke="#d49a52" stroke-width="5" stroke-linecap="round"/><circle cx="58" cy="27" r="8" fill="none" stroke="#69a9d1" stroke-width="3"/><path d="M58 35 V51 M58 39 L48 45 M58 39 L68 45" stroke="#69a9d1" stroke-width="3"/></svg></span><span class="gname">Forca</span>Palavras e expressões, com teclado e dica.</button>'+
     '<button class="game-btn" id="btnCW" '+(cwReady?'':'disabled')+'><span class="game-art"><svg viewBox="0 0 80 66"><g fill="#273747" stroke="#69a9d1"><rect x="27" y="3" width="20" height="20" rx="3"/><rect x="27" y="24" width="20" height="20" rx="3"/><rect x="27" y="45" width="20" height="20" rx="3"/><rect x="6" y="24" width="20" height="20" rx="3"/><rect x="48" y="24" width="20" height="20" rx="3"/></g><g fill="#e8a33d" font-size="13" font-family="monospace"><text x="33" y="18">C</text><text x="12" y="39">W</text><text x="33" y="39">O</text><text x="54" y="39">R</text><text x="33" y="60">D</text></g></svg></span><span class="gname">Cruzadinha</span>Palavras que se cruzam.</button>'+
-    '<button class="game-btn" id="btnQuiz" '+(quizReady?'':'disabled')+'><span class="game-art"><svg viewBox="0 0 80 66"><circle cx="40" cy="29" r="24" fill="#273747" stroke="#69a9d1" stroke-width="3"/><path d="M31 23 Q32 13 41 13 Q51 13 51 22 Q51 29 42 32 V38" fill="none" stroke="#e8a33d" stroke-width="5" stroke-linecap="round"/><circle cx="42" cy="47" r="3" fill="#e8a33d"/></svg></span><span class="gname">Quiz</span>Múltipla escolha, '+quizN+' pergunta(s).</button>'+
+    '<button class="game-btn" id="btnQuiz" '+(quizReady?'':'disabled')+'><span class="game-art"><svg viewBox="0 0 80 66"><circle cx="40" cy="29" r="24" fill="#273747" stroke="#69a9d1" stroke-width="3"/><path d="M31 23 Q32 13 41 13 Q51 13 51 22 Q51 29 42 32 V38" fill="none" stroke="#e8a33d" stroke-width="5" stroke-linecap="round"/><circle cx="42" cy="47" r="3" fill="#e8a33d"/></svg></span><span class="gname">Quiz</span>Múltipla escolha com os itens escolhidos.</button>'+
     '<button class="game-btn" id="btnSentence" '+(sentenceReady?'':'disabled')+'><span class="game-art"><svg viewBox="0 0 80 66"><rect x="4" y="8" width="29" height="18" rx="5" fill="#6fa787"/><rect x="38" y="8" width="37" height="18" rx="5" fill="#69a9d1"/><rect x="13" y="36" width="25" height="18" rx="5" fill="#e8a33d"/><rect x="43" y="36" width="29" height="18" rx="5" fill="#b28bd4"/><path d="M35 59 H47" stroke="#fff" stroke-width="3"/></svg></span><span class="gname">Monte a frase</span>Organize suas próprias expressões.</button>'+
     '<button class="game-btn" id="btnMem" '+(memReady?'':'disabled')+'><span class="game-art"><svg viewBox="0 0 80 66"><rect x="9" y="7" width="27" height="42" rx="6" fill="#273747" stroke="#69a9d1" stroke-width="3" transform="rotate(-8 22 28)"/><rect x="44" y="7" width="27" height="42" rx="6" fill="#273747" stroke="#e8a33d" stroke-width="3" transform="rotate(8 57 28)"/><path d="M20 27 L25 32 L32 22 M49 27 L54 32 L61 22" fill="none" stroke="#6fa787" stroke-width="3"/></svg></span><span class="gname">Memória</span>Pares palavra / tradução.</button></div>'+
-    '<div class="lock-msg">Conjunto: <b style="color:var(--text);">'+esc(scopeLabel())+'</b> — '+pool.length+' captura(s), '+gw.length+' válida(s) pra grade (palavra única).'+
+    '<div class="lock-msg">Conjunto: <b style="color:var(--text);">'+esc(scopeLabel())+'</b> · usando <b style="color:var(--amber);">'+quizN+'</b> de '+pool.length+' captura(s) ·  '+gw.length+' válida(s) pra grade (palavra única).'+
     (pool.length<3?' Capture mais pra desbloquear jogos.':'')+
     (UI.gameScope==='phrases'?' Expressões jogam na forca, no quiz e na memória — caça-palavras e cruzadinha usam palavras únicas.':'')+'</div>'+renderGameRanking();
   gameArea.querySelectorAll('#timerSeg button').forEach(b=>b.addEventListener('click',()=>{UI.timerLevel=b.dataset.time;renderGameMenu()}));const ctm=document.getElementById('customMinutes');if(ctm)ctm.addEventListener('change',()=>{UI.customMinutes=Math.max(1,Math.min(60,+ctm.value||5));ctm.value=UI.customMinutes});
   gameArea.querySelectorAll('#scopeSeg button').forEach(b=>b.addEventListener('click',()=>{ UI.gameScope=b.dataset.scope; renderGameMenu(); }));
   gameArea.querySelectorAll('#lenSeg button').forEach(b=>b.addEventListener('click',()=>{ UI.quizLen=b.dataset.len; renderGameMenu(); }));
   document.getElementById('btnPrep').addEventListener('click',startPrepositionGame);
-  if(wsReady) document.getElementById('btnWS').addEventListener('click',()=>renderWordSearch(pool));
-  if(hgReady) document.getElementById('btnHG').addEventListener('click',()=>startHangman(pool));
-  if(cwReady) document.getElementById('btnCW').addEventListener('click',()=>renderCrossword(pool));
-  if(quizReady) document.getElementById('btnQuiz').addEventListener('click',()=>startQuiz(pool,UI.quizLen,'Quiz · '+scopeLabel()));
-  if(sentenceReady) document.getElementById('btnSentence').addEventListener('click',()=>startSentenceBuilder(pool));
-  if(memReady) document.getElementById('btnMem').addEventListener('click',()=>startMemory(pool));
+  if(wsReady) document.getElementById('btnWS').addEventListener('click',()=>renderWordSearch(selectedGamePool(pool)));
+  if(hgReady) document.getElementById('btnHG').addEventListener('click',()=>startHangman(selectedGamePool(pool)));
+  if(cwReady) document.getElementById('btnCW').addEventListener('click',()=>renderCrossword(selectedGamePool(pool)));
+  if(quizReady) document.getElementById('btnQuiz').addEventListener('click',()=>startQuiz(selectedGamePool(pool),'all','Quiz · '+scopeLabel()));
+  if(sentenceReady) document.getElementById('btnSentence').addEventListener('click',()=>startSentenceBuilder(selectedGamePool(pool)));
+  if(memReady) document.getElementById('btnMem').addEventListener('click',()=>startMemory(selectedGamePool(pool)));
 }
 function backToMenu(){ stopGameTimer(); UI.gameActive=false; UI.challengeRun=false; wsCtl.finish=null; renderGameMenu(); }
 function startGameById(id,pool,isCh){
@@ -2632,6 +2634,5 @@ document.addEventListener('keydown',e=>{
 
 loadState();
 </script>
-<script>(function(){function c(){var b=a.contentDocument||(a.contentWindow&&a.contentWindow.document);if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a3d21dbaa8f72550',t:'MTc4OTc1MzAyMA=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+</body>
 </html>
-
